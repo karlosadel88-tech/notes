@@ -1,0 +1,8 @@
+{
+  "name": "NoteTape - Premium Digital Notebook",
+  "description": "A professional note-taking app with a specialized Tape Tool for active recall study, handwriting engine, and PDF annotation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
