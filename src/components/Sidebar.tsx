@@ -88,19 +88,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </section>
       </div>
-
-      <div className="p-4 border-t border-zinc-100">
-        <div className="bg-zinc-900 rounded-2xl p-4 text-white">
-          <p className="text-xs font-medium opacity-60 mb-1">Study Progress</p>
-          <div className="flex items-end justify-between mb-2">
-            <span className="text-2xl font-serif font-bold">84%</span>
-            <span className="text-[10px] opacity-60">12/15 Tapes Mastered</span>
-          </div>
-          <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-            <div className="h-full bg-white rounded-full" style={{ width: '84%' }} />
-          </div>
-        </div>
-      </div>
     </div>
   );
 };

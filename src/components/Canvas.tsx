@@ -23,7 +23,7 @@ interface CanvasProps {
   eraserWidth: number;
   tapeHeight: number;
   backgroundImage?: string;
-  orientation: 'portrait' | 'landscape';
+  zoom: number;
 }
 
 export const Canvas: React.FC<CanvasProps> = ({
@@ -43,17 +43,44 @@ export const Canvas: React.FC<CanvasProps> = ({
   eraserWidth,
   tapeHeight,
   backgroundImage,
-  orientation
+  zoom
 }) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [lassoPoints, setLassoPoints] = useState<number[]>([]);
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
   const [bgImage] = useImage(backgroundImage || '');
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.offsetWidth,
+          height: containerRef.current.offsetHeight
+        });
+      }
+    };
+
+    const observer = new ResizeObserver(updateDimensions);
+    observer.observe(containerRef.current);
+    updateDimensions();
+
+    return () => observer.disconnect();
+  }, []);
+
+  const getRelativePointerPosition = (stage: any) => {
+    const transform = stage.getAbsoluteTransform().copy().invert();
+    const pos = stage.getPointerPosition();
+    return transform.point(pos);
+  };
 
   const handleMouseDown = (e: any) => {
     const stage = e.target.getStage();
-    const pos = stage.getPointerPosition();
+    const pos = getRelativePointerPosition(stage);
 
     if (tool === 'select') {
       const clickedOnEmpty = e.target === stage;
@@ -115,7 +142,7 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (!isDrawing) return;
 
     const stage = e.target.getStage();
-    const pos = stage.getPointerPosition();
+    const pos = getRelativePointerPosition(stage);
 
     if (tool === 'lasso') {
       setLassoPoints([...lassoPoints, pos.x, pos.y]);
@@ -193,11 +220,27 @@ export const Canvas: React.FC<CanvasProps> = ({
     }
   }, [selectedIds]);
 
+  const contentHeight = bgImage && bgImage.width > 0
+    ? dimensions.width * (bgImage.height / bgImage.width)
+    : dimensions.height;
+
+  const stageHeight = Math.max(dimensions.height, contentHeight);
+
+  // Ensure dimensions are valid numbers
+  const validZoom = isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const validWidth = isFinite(dimensions.width) ? dimensions.width * validZoom : 1000;
+  const validHeight = isFinite(stageHeight) ? stageHeight * validZoom : 1000;
+
   return (
-    <div className={cn("w-full h-screen overflow-hidden cursor-crosshair", background)}>
+    <div 
+      ref={containerRef}
+      className={cn("w-full h-full overflow-auto cursor-crosshair custom-scrollbar", background)}
+    >
       <Stage
-        width={window.innerWidth}
-        height={window.innerHeight}
+        width={validWidth}
+        height={validHeight}
+        scaleX={validZoom}
+        scaleY={validZoom}
         onMouseDown={handleMouseDown}
         onMousemove={handleMouseMove}
         onMouseup={handleMouseUp}
@@ -209,11 +252,11 @@ export const Canvas: React.FC<CanvasProps> = ({
           {bgImage && (
             <KonvaImage
               image={bgImage}
-              x={orientation === 'landscape' ? window.innerWidth / 2 : 0}
-              y={orientation === 'landscape' ? 0 : 0}
-              width={orientation === 'landscape' ? window.innerHeight : window.innerWidth}
-              height={orientation === 'landscape' ? window.innerWidth : window.innerWidth * (bgImage.height / bgImage.width)}
-              rotation={orientation === 'landscape' ? 90 : 0}
+              x={0}
+              y={0}
+              width={dimensions.width}
+              height={dimensions.width * (bgImage.height / bgImage.width)}
+              rotation={0}
               opacity={0.8}
               listening={false}
             />

@@ -35,7 +35,6 @@ export interface NotePage {
   tapes: TapeStrip[];
   background: 'white' | 'dark' | 'paper' | 'grid' | 'dots';
   backgroundImage?: string;
-  orientation: 'portrait' | 'landscape';
 }
 
 export interface Notebook {

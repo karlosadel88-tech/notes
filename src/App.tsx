@@ -4,9 +4,8 @@ import { Toolbar } from './components/Toolbar';
 import { Canvas } from './components/Canvas';
 import { Tool, TapeColor, Notebook, DrawingLine, TapeStrip } from './types';
 import { PAPER_THEMES } from './constants';
-import confetti from 'canvas-confetti';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, CheckCircle2, Trophy, Plus, Book } from 'lucide-react';
+import { Book, Plus } from 'lucide-react';
 import { cn } from './lib/utils';
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-ignore
@@ -27,8 +26,7 @@ const INITIAL_NOTEBOOKS: Notebook[] = [
         title: 'The Skeletal System',
         lines: [],
         tapes: [],
-        background: 'paper',
-        orientation: 'portrait'
+        background: 'paper'
       }
     ]
   },
@@ -43,16 +41,40 @@ const INITIAL_NOTEBOOKS: Notebook[] = [
         title: 'Hydrocarbons',
         lines: [],
         tapes: [],
-        background: 'grid',
-        orientation: 'portrait'
+        background: 'grid'
       }
     ]
   }
 ];
 
 export default function App() {
-  const [notebooks, setNotebooks] = useState<Notebook[]>(INITIAL_NOTEBOOKS);
-  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(INITIAL_NOTEBOOKS[0].id);
+  const [notebooks, setNotebooks] = useState<Notebook[]>(() => {
+    try {
+      const saved = localStorage.getItem('notetape_notebooks');
+      return saved ? JSON.parse(saved) : INITIAL_NOTEBOOKS;
+    } catch (e) {
+      console.error('Failed to parse notebooks from localStorage', e);
+      return INITIAL_NOTEBOOKS;
+    }
+  });
+  const [activeNotebookId, setActiveNotebookId] = useState<string | null>(() => {
+    try {
+      const saved = localStorage.getItem('notetape_notebooks');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) && parsed.length > 0 ? parsed[0].id : (INITIAL_NOTEBOOKS[0]?.id || null);
+      }
+    } catch (e) {
+      console.error('Failed to parse activeNotebookId from localStorage', e);
+    }
+    return INITIAL_NOTEBOOKS[0]?.id || null;
+  });
+
+  // Save to localStorage whenever notebooks change
+  useEffect(() => {
+    localStorage.setItem('notetape_notebooks', JSON.stringify(notebooks));
+  }, [notebooks]);
+
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [activeTool, setActiveTool] = useState<Tool>('pen');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -63,8 +85,7 @@ export default function App() {
   const [highlighterWidth, setHighlighterWidth] = useState(20);
   const [eraserWidth, setEraserWidth] = useState(20);
   const [tapeHeight, setTapeHeight] = useState(40);
-  const [isQuizMode, setIsQuizMode] = useState(false);
-  const [quizProgress, setQuizProgress] = useState({ current: 0, total: 0 });
+  const [zoom, setZoom] = useState(1);
 
   const activeNotebook = notebooks.find(n => n.id === activeNotebookId);
   const activePage = activeNotebook?.pages[activePageIndex];
@@ -109,36 +130,72 @@ export default function App() {
             const typedarray = new Uint8Array(event.target?.result as ArrayBuffer);
             const loadingTask = pdfjsLib.getDocument(typedarray);
             const pdf = await loadingTask.promise;
+            const numPages = pdf.numPages;
+            const scale = 2; // High resolution render
             
-            // Load the first page
-            const page = await pdf.getPage(1);
-            const scale = 2;
-            const viewport = page.getViewport({ scale });
+            // Get dimensions of all pages to calculate total height
+            let totalHeight = 0;
+            let maxWidth = 0;
+            const pageData = [];
+            
+            for (let i = 1; i <= numPages; i++) {
+              const page = await pdf.getPage(i);
+              const viewport = page.getViewport({ scale });
+              totalHeight += viewport.height;
+              maxWidth = Math.max(maxWidth, viewport.width);
+              pageData.push({ page, viewport });
+            }
 
-            // Prepare canvas using PDF page dimensions
+            // Prepare canvas using total PDF dimensions
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
+            canvas.height = totalHeight;
+            canvas.width = maxWidth;
 
             if (context) {
-              const renderContext: any = {
-                canvasContext: context,
-                viewport: viewport
-              };
-              await page.render(renderContext).promise;
+              let currentY = 0;
+              for (const { page, viewport } of pageData) {
+                const renderContext: any = {
+                  canvasContext: context,
+                  viewport: viewport,
+                  // We need to translate the context for each page
+                };
+                
+                // Save context state
+                context.save();
+                context.translate(0, currentY);
+                await page.render(renderContext).promise;
+                context.restore();
+                
+                currentY += viewport.height;
+              }
               const url = canvas.toDataURL();
 
-              if (!activeNotebookId || !activePage) return;
+              if (!activeNotebookId) return;
+              const newPageId = Math.random().toString(36).substr(2, 9);
               setNotebooks(prev => prev.map(n => {
                 if (n.id === activeNotebookId) {
+                  const newPage = {
+                    id: newPageId,
+                    title: file.name.replace('.pdf', ''),
+                    lines: [],
+                    tapes: [],
+                    background: 'white' as const,
+                    backgroundImage: url
+                  };
                   return {
                     ...n,
-                    pages: n.pages.map((p, i) => i === activePageIndex ? { ...p, title: file.name.replace('.pdf', ''), backgroundImage: url } : p)
+                    pages: [...n.pages, newPage]
                   };
                 }
                 return n;
               }));
+              
+              // Switch to the new page
+              const notebook = notebooks.find(n => n.id === activeNotebookId);
+              if (notebook) {
+                setActivePageIndex(notebook.pages.length);
+              }
             }
           } catch (error) {
             console.error('Error loading PDF:', error);
@@ -155,20 +212,6 @@ export default function App() {
     if (selectedIds.length === 0 || !activePage) return;
     setTapes(activePage.tapes.filter(t => !selectedIds.includes(t.id)));
     setSelectedIds([]);
-  };
-
-  const toggleOrientation = () => {
-    if (!activeNotebookId || !activePage) return;
-    const newOrientation = activePage.orientation === 'portrait' ? 'landscape' : 'portrait';
-    setNotebooks(prev => prev.map(n => {
-      if (n.id === activeNotebookId) {
-        return {
-          ...n,
-          pages: n.pages.map((p, i) => i === activePageIndex ? { ...p, orientation: newOrientation } : p)
-        };
-      }
-      return n;
-    }));
   };
 
   const setLines = useCallback((lines: DrawingLine[]) => {
@@ -221,8 +264,7 @@ export default function App() {
             title: `Page ${n.pages.length + 1}`,
             lines: [],
             tapes: [],
-            background: 'white',
-            orientation: 'portrait'
+            background: 'white'
           }]
         };
       }
@@ -271,13 +313,6 @@ export default function App() {
     setTapes([...activePage.tapes, ...newTapes]);
   };
 
-  const startQuiz = () => {
-    if (!activePage || activePage.tapes.length === 0) return;
-    handleToggleAllTape(false);
-    setIsQuizMode(true);
-    setQuizProgress({ current: 0, total: activePage.tapes.length });
-  };
-
   const handleNewNotebook = () => {
     const newId = Math.random().toString(36).substr(2, 9);
     const newNotebook: Notebook = {
@@ -290,31 +325,12 @@ export default function App() {
         title: 'Page 1',
         lines: [],
         tapes: [],
-        background: 'white',
-        orientation: 'portrait'
+        background: 'white'
       }]
     };
     setNotebooks([...notebooks, newNotebook]);
     setActiveNotebookId(newId);
   };
-
-  // Track quiz progress by counting revealed tapes
-  useEffect(() => {
-    if (isQuizMode && activePage) {
-      const revealedCount = activePage.tapes.filter(t => t.isRevealed).length;
-      setQuizProgress(prev => ({ ...prev, current: revealedCount }));
-      
-      if (revealedCount === activePage.tapes.length && activePage.tapes.length > 0) {
-        confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#fef08a', '#f5f5dc', '#d1d5db']
-        });
-        setTimeout(() => setIsQuizMode(false), 3000);
-      }
-    }
-  }, [activePage?.tapes, isQuizMode]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-zinc-100">
@@ -392,14 +408,12 @@ export default function App() {
             onUndo={handleUndo}
             onRedo={() => {}} // TODO: Implement Redo
             onClear={handleClear}
-            onToggleAllTape={handleToggleAllTape}
-            onStartQuiz={startQuiz}
             onSmartTape={handleSmartTape}
             onDeleteSelected={handleDeleteSelected}
             onImportImage={handleImportImage}
             onImportPDF={handleImportPDF}
-            onToggleOrientation={toggleOrientation}
-            orientation={activePage?.orientation || 'portrait'}
+            zoom={zoom}
+            setZoom={setZoom}
           />
 
           {activePage && (
@@ -420,50 +434,10 @@ export default function App() {
               eraserWidth={eraserWidth}
               tapeHeight={tapeHeight}
               backgroundImage={activePage.backgroundImage}
-              orientation={activePage.orientation}
+              zoom={zoom}
             />
           )}
         </div>
-
-        {/* Quiz Mode Overlay */}
-        <AnimatePresence>
-          {isQuizMode && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 bg-zinc-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-6 border border-white/10"
-            >
-              <div className="flex flex-col">
-                <span className="text-[10px] uppercase tracking-widest opacity-50 font-bold">Study Mode Active</span>
-                <span className="text-lg font-serif font-bold">Reveal the hidden sections</span>
-              </div>
-              
-              <div className="h-10 w-px bg-white/10" />
-              
-              <div className="flex items-center gap-4">
-                <div className="flex flex-col items-end">
-                  <span className="text-xs opacity-60">Progress</span>
-                  <span className="font-mono font-bold">{quizProgress.current} / {quizProgress.total}</span>
-                </div>
-                <div className="w-32 h-2 bg-white/10 rounded-full overflow-hidden">
-                  <motion.div 
-                    className="h-full bg-yellow-400"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${(quizProgress.current / quizProgress.total) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <button 
-                onClick={() => setIsQuizMode(false)}
-                className="p-2 hover:bg-white/10 rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
 
         {/* Empty State */}
         {!activeNotebookId && (

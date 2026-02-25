@@ -3,20 +3,17 @@ import {
   Eraser, 
   StickyNote, 
   MousePointer2, 
-  Square, 
   Undo2, 
   Redo2, 
   Trash2,
-  Eye,
-  EyeOff,
-  Play,
   Settings2,
   Highlighter,
   Image as ImageIcon,
   FileUp,
   Scissors,
-  RotateCw,
-  Layout
+  ZoomIn,
+  ZoomOut,
+  Maximize
 } from 'lucide-react';
 import { Tool, TapeColor } from '../types';
 import { TAPE_COLORS, PEN_COLORS, HIGHLIGHTER_COLORS } from '../constants';
@@ -42,14 +39,12 @@ interface ToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
-  onToggleAllTape: (reveal: boolean) => void;
-  onStartQuiz: () => void;
   onSmartTape: () => void;
   onDeleteSelected: () => void;
   onImportImage: () => void;
   onImportPDF: () => void;
-  onToggleOrientation: () => void;
-  orientation: 'portrait' | 'landscape';
+  zoom: number;
+  setZoom: (z: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -72,19 +67,17 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onUndo,
   onRedo,
   onClear,
-  onToggleAllTape,
-  onStartQuiz,
   onSmartTape,
   onDeleteSelected,
   onImportImage,
   onImportPDF,
-  onToggleOrientation,
-  orientation
+  zoom,
+  setZoom
 }) => {
   return (
-    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2">
-      <div className="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-md border border-zinc-200 rounded-2xl shadow-xl">
-        <div className="flex items-center gap-1 pr-4 border-r border-zinc-200">
+    <div className="fixed right-4 top-1/2 -translate-y-1/2 z-50 flex flex-row-reverse items-start gap-4">
+      <div className="flex flex-col items-center gap-2 p-2 bg-white/80 backdrop-blur-md border border-zinc-200 rounded-2xl shadow-xl">
+        <div className="flex flex-col items-center gap-1 pb-4 border-b border-zinc-200">
           <ToolButton 
             active={activeTool === 'select'} 
             onClick={() => setActiveTool('select')} 
@@ -123,45 +116,40 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1 px-4 border-r border-zinc-200">
+        <div className="flex flex-col items-center gap-1 py-4 border-b border-zinc-200">
           <ToolButton onClick={onImportImage} icon={<ImageIcon size={20} />} label="Import Image" />
           <ToolButton onClick={onImportPDF} icon={<FileUp size={20} />} label="Import PDF" />
-          <ToolButton 
-            onClick={onToggleOrientation} 
-            icon={orientation === 'portrait' ? <Layout size={20} /> : <Layout size={20} className="rotate-90" />} 
-            label={`Switch to ${orientation === 'portrait' ? 'Landscape' : 'Portrait'}`} 
-          />
         </div>
 
-        <div className="flex items-center gap-1 px-4 border-r border-zinc-200">
+        <div className="flex flex-col items-center gap-1 py-4 border-b border-zinc-200">
           <ToolButton onClick={onUndo} icon={<Undo2 size={20} />} label="Undo" />
           <ToolButton onClick={onRedo} icon={<Redo2 size={20} />} label="Redo" />
           <ToolButton onClick={onClear} icon={<Trash2 size={20} />} label="Clear Page" />
           {activeTool === 'select' && (
             <>
-              <div className="w-px h-6 bg-zinc-200 mx-1" />
+              <div className="w-6 h-px bg-zinc-200 my-1" />
               <ToolButton onClick={onDeleteSelected} icon={<Trash2 size={20} className="text-red-500" />} label="Delete Selected" />
             </>
           )}
         </div>
 
-        <div className="flex items-center gap-1 pl-4">
-          <ToolButton onClick={() => onToggleAllTape(true)} icon={<Eye size={20} />} label="Reveal All" />
-          <ToolButton onClick={() => onToggleAllTape(false)} icon={<EyeOff size={20} />} label="Hide All" />
+        <div className="flex flex-col items-center gap-1 py-4 border-b border-zinc-200">
+          <ToolButton onClick={() => setZoom(Math.min(zoom + 0.1, 3))} icon={<ZoomIn size={20} />} label="Zoom In" />
+          <ToolButton onClick={() => setZoom(Math.max(zoom - 0.1, 0.5))} icon={<ZoomOut size={20} />} label="Zoom Out" />
+          <ToolButton onClick={() => setZoom(1)} icon={<Maximize size={20} />} label="Reset Zoom" />
+          <div className="text-[10px] font-mono font-bold text-zinc-400 mt-1">
+            {Math.round(zoom * 100)}%
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-1 pt-4">
           <ToolButton onClick={onSmartTape} icon={<Settings2 size={20} />} label="Smart Tape (AI)" />
-          <button 
-            onClick={onStartQuiz}
-            className="flex items-center gap-2 px-4 py-1.5 bg-zinc-900 text-white rounded-lg hover:bg-zinc-800 transition-colors text-sm font-medium"
-          >
-            <Play size={16} fill="currentColor" />
-            Study Mode
-          </button>
         </div>
       </div>
 
-      {/* Secondary Toolbar for Colors and Sizes */}
+      {/* Secondary Toolbar for Colors and Sizes - now positioned to the left of the main toolbar */}
       {(activeTool === 'pen' || activeTool === 'highlighter' || activeTool === 'tape' || activeTool === 'eraser') && (
-        <div className="flex items-center gap-6 px-4 py-2 bg-white/80 backdrop-blur-md border border-zinc-200 rounded-xl shadow-lg animate-in fade-in slide-in-from-top-2">
+        <div className="flex flex-col items-start gap-6 px-4 py-4 bg-white/80 backdrop-blur-md border border-zinc-200 rounded-xl shadow-lg animate-in fade-in slide-in-from-right-2">
           {activeTool === 'pen' && (
             <>
               <div className="flex items-center gap-2">
